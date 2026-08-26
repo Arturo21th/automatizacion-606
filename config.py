@@ -15,18 +15,18 @@ from dotenv import load_dotenv
 # ejecutable — así el .env y la carpeta datos/ quedan junto al .exe, no en la carpeta
 # temporal donde PyInstaller descomprime el programa en cada arranque.
 if getattr(sys, "frozen", False):
-    _CARPETA_BASE = Path(sys.executable).resolve().parent
+    CARPETA_BASE = Path(sys.executable).resolve().parent
 else:
-    _CARPETA_BASE = Path(__file__).resolve().parent
+    CARPETA_BASE = Path(__file__).resolve().parent
 
-load_dotenv(_CARPETA_BASE / ".env")
+load_dotenv(CARPETA_BASE / ".env")
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 EMPRESA_RNC = os.environ.get("EMPRESA_RNC", "")
 EMPRESA_NOMBRE = os.environ.get("EMPRESA_NOMBRE", "")
 TELEGRAM_CHAT_ID_AUTORIZADO = os.environ.get("TELEGRAM_CHAT_ID_AUTORIZADO", "")
-CARPETA_DATOS = Path(os.environ.get("CARPETA_DATOS", str(_CARPETA_BASE / "datos")))
+CARPETA_DATOS = Path(os.environ.get("CARPETA_DATOS", str(CARPETA_BASE / "datos")))
 
 # Carpeta que la app de escritorio vigila en busca de facturas nuevas (fotos/PDF).
 CARPETA_VIGILADA = os.environ.get("CARPETA_VIGILADA", str(Path.home() / "Downloads"))

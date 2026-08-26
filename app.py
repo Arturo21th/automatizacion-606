@@ -11,10 +11,13 @@ import platform
 import queue
 import shutil
 import subprocess
+import sys
 import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, simpledialog, ttk
+
+from dotenv import set_key
 
 import almacen
 import config
@@ -53,10 +56,76 @@ def _abrir_con_visor(ruta: Path) -> None:
         subprocess.run(["xdg-open", str(ruta)])
 
 
+class DialogoConfiguracionInicial(tk.Toplevel):
+    """Primer arranque sin API key configurada: cada instalación/usuario pone la
+    suya — así nunca se comparte una key entre distintos usuarios del programa."""
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.title("Configuración inicial")
+        self.resizable(False, False)
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._salir)
+
+        marco = ttk.Frame(self, padding=20)
+        marco.pack(fill="both", expand=True)
+
+        ttk.Label(
+            marco,
+            text="Para leer facturas con IA, esta app necesita tu propia API key de Anthropic.",
+            wraplength=380,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 4))
+        ttk.Label(
+            marco,
+            text="Consíguela gratis en console.anthropic.com → API Keys.",
+            foreground="gray",
+            wraplength=380,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 12))
+
+        ttk.Label(marco, text="API Key de Anthropic:").pack(anchor="w")
+        self.var_key = tk.StringVar()
+        ttk.Entry(marco, textvariable=self.var_key, width=45, show="•").pack(pady=(2, 12))
+
+        botones = ttk.Frame(marco)
+        botones.pack()
+        ttk.Button(botones, text="Salir", command=self._salir).pack(side="left", padx=4)
+        ttk.Button(botones, text="Guardar y continuar", command=self._guardar).pack(
+            side="left", padx=4
+        )
+
+    def _salir(self) -> None:
+        sys.exit(0)
+
+    def _guardar(self) -> None:
+        key = self.var_key.get().strip()
+        if not key.startswith("sk-ant-") or len(key) < 20:
+            messagebox.showerror(
+                "Key inválida", "La API key de Anthropic debe empezar con 'sk-ant-'."
+            )
+            return
+
+        ruta_env = config.CARPETA_BASE / ".env"
+        ruta_env.touch(exist_ok=True)
+        set_key(str(ruta_env), "ANTHROPIC_API_KEY", key)
+
+        messagebox.showinfo("Listo", "Guardado. La aplicación se va a reiniciar.")
+        self.destroy()
+        self.master.destroy()
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Formato 606 — Revisor de facturas")
+
+        if not config.ANTHROPIC_API_KEY:
+            self.withdraw()
+            DialogoConfiguracionInicial(self)
+            return
+
         self.geometry("480x150")
 
         self.carpeta = Path(config.CARPETA_VIGILADA).expanduser()

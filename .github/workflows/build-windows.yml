@@ -1,4 +1,4 @@
-name: Compilar .exe para Windows
+name: Compilar instalador de Windows
 
 on:
   push:
@@ -22,12 +22,29 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Preparar .env con la API key (secreto de GitHub, nunca en el código)
+        shell: bash
+        run: echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" > .env
+
       - name: Compilar Formato606.exe
         run: |
-          pyinstaller --onefile --windowed --name Formato606 app.py
+          pyinstaller --onefile --windowed --name Formato606 --icon icon.ico app.py
 
-      - name: Subir el .exe como artefacto descargable
+      - name: Instalar Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compilar el instalador (Formato606-Setup.exe)
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+      - name: Subir el instalador amigable
         uses: actions/upload-artifact@v4
         with:
-          name: Formato606-Windows
-          path: dist/Formato606.exe
+          name: Formato606-Instalador
+          path: dist_installer\Formato606-Setup.exe
+
+      - name: Subir el .exe suelto (por si prefieres no usar el instalador)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Formato606-exe-suelto
+          path: dist\Formato606.exe

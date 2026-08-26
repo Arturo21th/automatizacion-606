@@ -4,5 +4,6 @@ __pycache__/
 *.pyc
 .venv/
 dist/
+dist_installer/
 build/
 *.spec
