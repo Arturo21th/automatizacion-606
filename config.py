@@ -13,13 +13,29 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Cuando corre como .exe empaquetado (PyInstaller), sys.executable apunta al propio
-# ejecutable — así el .env y la carpeta datos/ quedan junto al .exe, no en la carpeta
-# temporal donde PyInstaller descomprime el programa en cada arranque.
+# ejecutable — ahí es donde el instalador deja el .env con la API key.
 if getattr(sys, "frozen", False):
     CARPETA_BASE = Path(sys.executable).resolve().parent
 else:
     CARPETA_BASE = Path(__file__).resolve().parent
 
+# Carpeta donde la app puede ESCRIBIR (datos, vistos.json, .env del usuario).
+# Instalada en Windows, el .exe vive en C:\Program Files, que es de solo lectura
+# para usuarios normales — escribir ahí da "Acceso denegado" (WinError 5). Por eso
+# los datos van a %LOCALAPPDATA%\Formato606. Corriendo desde el código fuente,
+# todo queda junto al proyecto, como siempre.
+if getattr(sys, "frozen", False):
+    if os.name == "nt":
+        CARPETA_ESCRITURA = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Formato606"
+    else:
+        CARPETA_ESCRITURA = Path.home() / "Formato606"
+else:
+    CARPETA_ESCRITURA = CARPETA_BASE
+
+# El .env del usuario (si alguna vez configuró su propia key) tiene prioridad
+# sobre el .env que viene con el instalador; load_dotenv no pisa valores ya cargados.
+RUTA_ENV_USUARIO = CARPETA_ESCRITURA / ".env"
+load_dotenv(RUTA_ENV_USUARIO)
 load_dotenv(CARPETA_BASE / ".env")
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -27,7 +43,7 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 EMPRESA_RNC = os.environ.get("EMPRESA_RNC", "")
 EMPRESA_NOMBRE = os.environ.get("EMPRESA_NOMBRE", "")
 TELEGRAM_CHAT_ID_AUTORIZADO = os.environ.get("TELEGRAM_CHAT_ID_AUTORIZADO", "")
-CARPETA_DATOS = Path(os.environ.get("CARPETA_DATOS", str(CARPETA_BASE / "datos")))
+CARPETA_DATOS = Path(os.environ.get("CARPETA_DATOS", str(CARPETA_ESCRITURA / "datos")))
 
 # Carpeta que la app de escritorio vigila en busca de facturas nuevas (fotos/PDF).
 CARPETA_VIGILADA = os.environ.get("CARPETA_VIGILADA", str(Path.home() / "Downloads"))

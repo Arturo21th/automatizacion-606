@@ -108,7 +108,8 @@ class DialogoConfiguracionInicial(tk.Toplevel):
             )
             return
 
-        ruta_env = config.CARPETA_BASE / ".env"
+        ruta_env = config.RUTA_ENV_USUARIO
+        ruta_env.parent.mkdir(parents=True, exist_ok=True)
         ruta_env.touch(exist_ok=True)
         set_key(str(ruta_env), "ANTHROPIC_API_KEY", key)
 
