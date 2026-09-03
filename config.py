@@ -6,6 +6,7 @@ fueron extraídos literalmente de la plantilla oficial de DGII
 clasificación que hace la IA use exactamente las mismas opciones que espera DGII.
 """
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -71,11 +72,15 @@ TIPO_RETENCION_ISR = {
     "09": "RETENCIONES SUBSECTOR DE GANADERÍA DE CARNE BOVINA",
 }
 
-# --- Prefijos válidos de NCF / e-NCF ---
-# B: comprobantes físicos (válidos durante la transición a e-CF); E: e-CF.
-PREFIJOS_NCF_VALIDOS = (
-    "B01", "B02", "B14", "B15", "B16", "B17",  # físicos más comunes en compras
-    "E31", "E32", "E33", "E34", "E41", "E43", "E44", "E45", "E46", "E47",  # e-CF
+# --- Formato válido de NCF / e-NCF ---
+# Expresión regular tomada literalmente de las macros de la "Herramienta
+# Formato 606" oficial de DGII (versión 2025, constante strRegexNcf):
+# series antiguas de 19 caracteres (A/P/Q), NCF físicos de 11 (B01-B04,
+# B11-B15, B17) y e-CF de 13 (E31-E34, E41-E45, E47).
+REGEX_NCF = re.compile(
+    r"(?:[AQPaqp][0-9]{8}(?:0[1-4]|1[1-5])[0-9]{8})"
+    r"|(?:[Bb](?:0[1-4]|1[1-5]|17)[0-9]{8})"
+    r"|(?:[Ee](?:3[1-4]|4[1-5]|47)[0-9]{10})"
 )
 
 # Las 24 columnas del Formato 606 en el orden exacto de la plantilla oficial de DGII.

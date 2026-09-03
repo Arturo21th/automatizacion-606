@@ -100,17 +100,18 @@ varias y es ambiguo, pregunta por chat "¿para cuál empresa es esta factura?" a
 de mostrar el resumen con los botones ✅ Confirmar / ❌ Descartar. Al confirmar, la
 factura se agrega al Excel de esa empresa y mes en `datos/{RNC}/606_AAAAMM.xlsx`.
 
-**Al cierre de mes**, generar el TXT de envío (de una empresa específica):
+**Al cierre de mes**, generar el TXT de envío con el botón **"Generar TXT para DGII"**
+de la app de escritorio (eliges la empresa y el período). También se puede desde
+la terminal (de una empresa específica):
 
 ```bash
 python generar_txt.py 131667023 202608
 ```
 
-Esto crea `datos/131667023/606_202608.txt`. **Antes de subirlo a la Oficina Virtual**, pásalo
-por la Herramienta de Prevalidación oficial de DGII para confirmar que no marca
-errores — el layout exacto del TXT (separador de campos) usado aquí es una
-aproximación basada en la documentación pública y debe verificarse contra el
-instructivo técnico vigente antes de un envío real.
+Esto crea `datos/131667023/DGII_F_606_131667023_202608.TXT` (mismo nombre y layout
+que produce la Herramienta Formato 606 oficial de DGII, verificado contra las
+macros de su versión 2025). **Antes de subirlo a la Oficina Virtual**, pásalo por
+la Herramienta de Prevalidación oficial de DGII para confirmar que no marca errores.
 
 ## Estructura
 

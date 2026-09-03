@@ -72,7 +72,9 @@ def agregar_factura(empresa_rnc: str, periodo: str, datos: dict) -> int:
         0,  # ITBIS Retenido
         0,  # ITBIS sujeto a Proporcionalidad
         0,  # ITBIS llevado al Costo
-        0,  # ITBIS por Adelantar
+        # ITBIS por Adelantar: la herramienta oficial de DGII lo calcula como
+        # ITBIS Facturado - ITBIS llevado al Costo (aquí el costo siempre es 0).
+        datos["itbis_facturado"],
         0,  # ITBIS percibido en compras
         "",  # Tipo de Retencion en ISR
         0,  # Monto Retencion Renta

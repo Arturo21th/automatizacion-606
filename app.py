@@ -14,6 +14,7 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
+from datetime import date
 from pathlib import Path
 from tkinter import messagebox, simpledialog, ttk
 
@@ -23,6 +24,7 @@ import almacen
 import config
 import empresas
 import extractor
+import generar_txt
 import validador
 
 # HEIC (formato por defecto de fotos de iPhone) no es un tipo de imagen soportado
@@ -135,6 +137,9 @@ class App(tk.Tk):
         ttk.Button(
             marco_superior, text="Administrar empresas", command=self._abrir_gestion_empresas
         ).pack(side="right")
+        ttk.Button(
+            marco_superior, text="Generar TXT para DGII", command=self._abrir_generar_txt
+        ).pack(side="right", padx=(0, 4))
 
         self.label_estado = ttk.Label(
             self,
@@ -154,6 +159,14 @@ class App(tk.Tk):
 
     def _abrir_gestion_empresas(self) -> None:
         DialogoEmpresas(self)
+
+    def _abrir_generar_txt(self) -> None:
+        if not empresas.listar():
+            messagebox.showerror(
+                "Sin empresas", "Primero registra una empresa en 'Administrar empresas'."
+            )
+            return
+        DialogoGenerarTxt(self)
 
     def _primer_escaneo(self) -> None:
         # Marca todo lo que ya está en la carpeta como "visto" para no reprocesar
@@ -286,6 +299,77 @@ class DialogoEmpresas(tk.Toplevel):
         self._recargar_lista()
 
 
+class DialogoGenerarTxt(tk.Toplevel):
+    """Elige empresa y período, y genera el archivo .txt de envío a DGII."""
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.title("Generar TXT para DGII")
+        self.resizable(False, False)
+        self.grab_set()
+
+        marco = ttk.Frame(self, padding=16)
+        marco.pack(fill="both", expand=True)
+
+        ttk.Label(marco, text="Empresa:").grid(row=0, column=0, sticky="w", pady=2)
+        opciones = [f'{e["rnc"]} - {e["nombre"]}' for e in empresas.listar()]
+        self.var_empresa = tk.StringVar(value=opciones[0] if len(opciones) == 1 else "")
+        ttk.Combobox(
+            marco, textvariable=self.var_empresa, values=opciones, width=40, state="readonly"
+        ).grid(row=0, column=1, pady=2)
+
+        ttk.Label(marco, text="Período (AAAAMM):").grid(row=1, column=0, sticky="w", pady=2)
+        self.var_periodo = tk.StringVar(value=date.today().strftime("%Y%m"))
+        ttk.Entry(marco, textvariable=self.var_periodo, width=10).grid(
+            row=1, column=1, sticky="w", pady=2
+        )
+
+        ttk.Label(
+            marco,
+            text="Antes de enviarlo a DGII, valida el archivo con la\n"
+            "Herramienta de Prevalidación oficial de la Oficina Virtual.",
+            foreground="gray",
+            justify="left",
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
+
+        botones = ttk.Frame(marco)
+        botones.grid(row=3, column=0, columnspan=2, pady=(12, 0))
+        ttk.Button(botones, text="Generar", command=self._generar).pack(side="left", padx=4)
+        ttk.Button(botones, text="Cerrar", command=self.destroy).pack(side="left", padx=4)
+
+    def _generar(self) -> None:
+        empresa_valor = self.var_empresa.get()
+        if not empresa_valor:
+            messagebox.showerror("Falta la empresa", "Selecciona una empresa.", parent=self)
+            return
+        rnc = empresa_valor.split(" - ")[0]
+
+        periodo = self.var_periodo.get().strip()
+        if len(periodo) != 6 or not periodo.isdigit():
+            messagebox.showerror(
+                "Período inválido", "El período debe ser AAAAMM, ej. 202609.", parent=self
+            )
+            return
+
+        try:
+            ruta = generar_txt.generar_txt(rnc, periodo)
+        except FileNotFoundError:
+            messagebox.showerror(
+                "Sin datos",
+                f"No hay facturas guardadas para esa empresa en el período {periodo}.",
+                parent=self,
+            )
+            return
+
+        if messagebox.askyesno(
+            "TXT generado",
+            f"Archivo generado:\n{ruta}\n\n¿Abrir la carpeta donde quedó guardado?",
+            parent=self,
+        ):
+            _abrir_con_visor(ruta.parent)
+        self.destroy()
+
+
 class DialogoRevision(tk.Toplevel):
     def __init__(self, master, archivo: Path, datos: dict, al_cerrar):
         super().__init__(master)
@@ -383,7 +467,19 @@ class DialogoRevision(tk.Toplevel):
         ttk.Button(botones, text="❌ Descartar", command=self._descartar).pack(side="left", padx=4)
 
         self.protocol("WM_DELETE_WINDOW", self._descartar)
+
+        # Revalida mientras se editan los campos, con una pequeña espera para no
+        # releer el Excel en cada tecla.
+        self._revalidacion_programada = None
+        for var in list(self.vars.values()) + [self.var_tipo_bien, self.var_forma_pago]:
+            var.trace_add("write", self._programar_revalidacion)
+
         self._revalidar()
+
+    def _programar_revalidacion(self, *_args) -> None:
+        if self._revalidacion_programada:
+            self.after_cancel(self._revalidacion_programada)
+        self._revalidacion_programada = self.after(400, self._revalidar)
 
     def _abrir(self) -> None:
         _abrir_con_visor(self.archivo)
@@ -418,20 +514,24 @@ class DialogoRevision(tk.Toplevel):
         self.var_empresa.set(nueva_opcion)
 
     def _revalidar(self) -> None:
+        self._revalidacion_programada = None
         try:
             datos_actuales = self._valores_finales()
         except ValueError:
-            self.label_errores.config(text="")
+            self.label_errores.config(
+                text="🚫 Revisar:\n- Hay montos que no son números válidos"
+            )
             return
 
         empresa_valor = self.var_empresa.get()
+        empresa_rnc = ""
         facturas_existentes = []
         if empresa_valor and empresa_valor != _NUEVA_EMPRESA:
             empresa_rnc = empresa_valor.split(" - ")[0]
             periodo = datos_actuales["fecha_comprobante"][:6]
             facturas_existentes = almacen.cargar_facturas(empresa_rnc, periodo)
 
-        errores = validador.validar_factura(datos_actuales, facturas_existentes)
+        errores = validador.validar_factura(datos_actuales, facturas_existentes, empresa_rnc)
         if errores:
             self.label_errores.config(text="🚫 Revisar:\n" + "\n".join(f"- {e}" for e in errores))
         else:
@@ -463,7 +563,24 @@ class DialogoRevision(tk.Toplevel):
 
         try:
             datos = self._valores_finales()
-            periodo = datos["fecha_comprobante"][:6]
+        except ValueError as exc:
+            messagebox.showerror("Dato inválido", f"Revisa los campos: {exc}")
+            return
+
+        periodo = datos["fecha_comprobante"][:6]
+        errores = validador.validar_factura(
+            datos, almacen.cargar_facturas(empresa_rnc, periodo), empresa_rnc
+        )
+        if errores and not messagebox.askyesno(
+            "Advertencias encontradas",
+            "Antes de guardar, revisa esto:\n"
+            + "\n".join(f"- {e}" for e in errores)
+            + "\n\n¿Guardar de todas formas?",
+            parent=self,
+        ):
+            return
+
+        try:
             linea = almacen.agregar_factura(empresa_rnc, periodo, datos)
         except (ValueError, KeyError) as exc:
             messagebox.showerror("Dato inválido", f"Revisa los campos: {exc}")

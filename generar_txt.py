@@ -1,9 +1,10 @@
 """Genera el archivo TXT de envío del Formato 606 a partir del Excel mensual del período.
 
-ADVERTENCIA: el layout exacto (separador de campos y orden binario) del TXT de envío
-debe confirmarse contra el instructivo técnico vigente de DGII y validarse con la
-Herramienta de Prevalidación oficial antes de usarlo en un envío real. Aquí se usa
-"|" como separador, el formato típico documentado por DGII para 606/607/608.
+El layout replica el que genera la "Herramienta Formato 606" oficial de DGII
+(versión 2025, macro GenerarArchivo): encabezado "606|RNC|período|cantidad",
+23 campos de detalle separados por "|", fechas como AAAAMMDD y códigos de
+catálogo de 2 dígitos. Aun así, conviene pasar el archivo por la Herramienta
+de Prevalidación de DGII antes de un envío real.
 """
 import sys
 from pathlib import Path
@@ -60,8 +61,12 @@ def generar_txt(empresa_rnc: str, periodo: str) -> Path:
         ]
         lineas.append("|".join(str(c) for c in campos))
 
-    ruta_txt = config.CARPETA_DATOS / empresa_rnc / f"606_{periodo}.txt"
-    ruta_txt.write_text("\n".join(lineas), encoding="utf-8")
+    # Línea de encabezado del formato de envío: 606|RNC del declarante|período|cantidad de registros
+    encabezado = f"606|{empresa_rnc}|{periodo}|{len(lineas)}"
+
+    # Mismo nombre de archivo que produce la herramienta oficial de DGII.
+    ruta_txt = config.CARPETA_DATOS / empresa_rnc / f"DGII_F_606_{empresa_rnc}_{periodo}.TXT"
+    ruta_txt.write_text("\n".join([encabezado] + lineas), encoding="utf-8")
     return ruta_txt
 
 
