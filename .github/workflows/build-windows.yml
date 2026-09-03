@@ -26,9 +26,12 @@ jobs:
         shell: bash
         run: echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" > .env
 
-      - name: Compilar Formato606.exe
+      # --onedir (no --onefile): el modo onefile descomprime todo el programa a una
+      # carpeta temporal en CADA arranque, lo que hacía la app lentísima al abrir.
+      # Con onedir el instalador copia la carpeta ya lista y arranca al instante.
+      - name: Compilar Formato606 (carpeta del programa)
         run: |
-          pyinstaller --onefile --windowed --name Formato606 --icon icon.ico app.py
+          pyinstaller --onedir --windowed --name Formato606 --icon icon.ico app.py
 
       - name: Instalar Inno Setup
         run: choco install innosetup -y --no-progress
@@ -43,8 +46,8 @@ jobs:
           name: Formato606-Instalador
           path: dist_installer\Formato606-Setup.exe
 
-      - name: Subir el .exe suelto (por si prefieres no usar el instalador)
+      - name: Subir la carpeta portátil (por si prefieres no usar el instalador)
         uses: actions/upload-artifact@v4
         with:
-          name: Formato606-exe-suelto
-          path: dist\Formato606.exe
+          name: Formato606-portable
+          path: dist\Formato606

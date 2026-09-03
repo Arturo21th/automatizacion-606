@@ -26,7 +26,8 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 Name: "desktopicon"; Description: "Crear un acceso directo en el Escritorio"; GroupDescription: "Accesos directos:"
 
 [Files]
-Source: "dist\Formato606.exe"; DestDir: "{app}"; Flags: ignoreversion
+; PyInstaller en modo --onedir produce dist\Formato606\ con el .exe y sus librerías
+Source: "dist\Formato606\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: ".env"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

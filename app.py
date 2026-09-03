@@ -378,6 +378,9 @@ class DialogoRevision(tk.Toplevel):
         self.archivo = archivo
         self.datos = datos
         self.al_cerrar = al_cerrar
+        # Facturas ya guardadas por (empresa, período): se leen del Excel una sola
+        # vez por diálogo — releerlo en cada tecla hacía lenta la revalidación.
+        self._cache_facturas: dict[tuple[str, str], list] = {}
         self.resizable(False, False)
         self.grab_set()
 
@@ -530,7 +533,10 @@ class DialogoRevision(tk.Toplevel):
         if empresa_valor and empresa_valor != _NUEVA_EMPRESA:
             empresa_rnc = empresa_valor.split(" - ")[0]
             periodo = datos_actuales["fecha_comprobante"][:6]
-            facturas_existentes = almacen.cargar_facturas(empresa_rnc, periodo)
+            clave = (empresa_rnc, periodo)
+            if clave not in self._cache_facturas:
+                self._cache_facturas[clave] = almacen.cargar_facturas(empresa_rnc, periodo)
+            facturas_existentes = self._cache_facturas[clave]
 
         errores = validador.validar_factura(datos_actuales, facturas_existentes, empresa_rnc)
         if errores:
