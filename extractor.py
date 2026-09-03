@@ -2,13 +2,20 @@
 usando la API de Claude (visión + salida JSON estricta).
 """
 import base64
+import io
 import json
 import mimetypes
 from pathlib import Path
 
 import anthropic
+from PIL import Image, ImageOps
 
 import config
+
+# La API reduce internamente cualquier imagen con lado mayor a ~1568px, así que
+# mandar la foto del celular a tamaño completo (varios MB) solo alarga la subida
+# sin mejorar en nada la lectura.
+_LADO_MAXIMO_IMAGEN = 1568
 
 _CLIENT = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
 
@@ -121,18 +128,35 @@ def _media_type(path: Path) -> str:
     return mime or "application/octet-stream"
 
 
+def _preparar_imagen(path: Path) -> tuple[str, str]:
+    """Reduce y recomprime la foto antes de subirla. Devuelve (base64, media_type)."""
+    try:
+        with Image.open(path) as img:
+            # Las fotos de celular guardan la rotación en metadatos EXIF que se
+            # pierden al recomprimir; hay que aplicarla o la factura llega acostada.
+            img = ImageOps.exif_transpose(img)
+            img = img.convert("RGB")
+            img.thumbnail((_LADO_MAXIMO_IMAGEN, _LADO_MAXIMO_IMAGEN))
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=85)
+        return base64.standard_b64encode(buffer.getvalue()).decode("utf-8"), "image/jpeg"
+    except Exception:
+        # Si Pillow no puede abrir el archivo, se envía tal cual llegó.
+        return base64.standard_b64encode(path.read_bytes()).decode("utf-8"), _media_type(path)
+
+
 def extraer_factura(ruta_archivo: str) -> dict:
     """Envía una foto o PDF de factura a Claude y devuelve los campos del 606 en un dict."""
     path = Path(ruta_archivo)
-    data = base64.standard_b64encode(path.read_bytes()).decode("utf-8")
-    media_type = _media_type(path)
 
-    if media_type == "application/pdf":
+    if _media_type(path) == "application/pdf":
+        data = base64.standard_b64encode(path.read_bytes()).decode("utf-8")
         content_block = {
             "type": "document",
             "source": {"type": "base64", "media_type": "application/pdf", "data": data},
         }
     else:
+        data, media_type = _preparar_imagen(path)
         content_block = {
             "type": "image",
             "source": {"type": "base64", "media_type": media_type, "data": data},

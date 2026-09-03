@@ -152,6 +152,10 @@ class App(tk.Tk):
 
         self._dialogo_abierto = False
         self._cola_pendientes: list[Path] = []
+        self._resultados_listos: list[tuple] = []
+        self._extraccion_en_curso = False
+        self._archivo_en_curso: Path | None = None
+        self._tamano_anterior: dict[str, int] = {}
 
         if not empresas.listar():
             self.after(300, self._abrir_gestion_empresas)
@@ -170,38 +174,57 @@ class App(tk.Tk):
         DialogoGenerarTxt(self)
 
     def _primer_escaneo(self) -> None:
-        # Marca todo lo que ya está en la carpeta como "visto" para no reprocesar
-        # archivos viejos que no tienen nada que ver con facturas.
-        for archivo in self.carpeta.iterdir():
-            if archivo.suffix.lower() in EXTENSIONES_VALIDAS:
-                _vistos.add(str(archivo.resolve()))
-        _guardar_vistos()
-        self.after(3000, self._revisar_carpeta)
+        # Solo el PRIMER arranque de la vida de la app (aún no existe vistos.json)
+        # marca lo que ya está en la carpeta, para no procesar archivos viejos que
+        # no son facturas. En arranques siguientes no: una foto guardada mientras
+        # la app estaba cerrada debe procesarse al abrirla — la lista persistida
+        # de vistos ya evita repetir las que sí se procesaron.
+        if not _ruta_vistos.exists():
+            for archivo in self.carpeta.iterdir():
+                if archivo.suffix.lower() in EXTENSIONES_VALIDAS:
+                    _vistos.add(str(archivo.resolve()))
+            _guardar_vistos()
+        self.after(1000, self._revisar_carpeta)
 
     def _revisar_carpeta(self) -> None:
         try:
             for archivo in self.carpeta.iterdir():
+                if archivo.suffix.lower() not in EXTENSIONES_VALIDAS:
+                    continue
                 clave = str(archivo.resolve())
-                if (
-                    archivo.suffix.lower() in EXTENSIONES_VALIDAS
-                    and clave not in _vistos
-                    and archivo not in self._cola_pendientes
-                ):
+                if clave in _vistos or archivo in self._cola_pendientes:
+                    continue
+                try:
+                    tamano = archivo.stat().st_size
+                except OSError:
+                    continue
+                # Se encola cuando el tamaño deja de crecer entre dos escaneos:
+                # así no se procesa un archivo que todavía se está descargando.
+                if tamano > 0 and self._tamano_anterior.get(clave) == tamano:
                     self._cola_pendientes.append(archivo)
+                    self._tamano_anterior.pop(clave, None)
+                else:
+                    self._tamano_anterior[clave] = tamano
         except FileNotFoundError:
             pass
 
-        if self._cola_pendientes and not self._dialogo_abierto:
-            self._procesar_siguiente()
+        self._avanzar()
+        self.after(1000, self._revisar_carpeta)
 
-        self.after(3000, self._revisar_carpeta)
+    def _avanzar(self) -> None:
+        """Motor del flujo: mientras se revisa una factura, la siguiente ya se está
+        leyendo en segundo plano — al confirmar una, la próxima aparece al instante."""
+        if self._cola_pendientes and not self._extraccion_en_curso:
+            self._extraer(self._cola_pendientes.pop(0))
+        if self._resultados_listos and not self._dialogo_abierto:
+            self._mostrar_siguiente_resultado()
+        self._actualizar_estado()
 
-    def _procesar_siguiente(self) -> None:
-        archivo = self._cola_pendientes.pop(0)
+    def _extraer(self, archivo: Path) -> None:
         _vistos.add(str(archivo.resolve()))
         _guardar_vistos()
-        self._dialogo_abierto = True
-        self.label_estado.config(text=f"Vigilando: {self.carpeta}\nLeyendo {archivo.name}...")
+        self._extraccion_en_curso = True
+        self._archivo_en_curso = archivo
 
         def trabajar():
             try:
@@ -215,28 +238,42 @@ class App(tk.Tk):
 
     def _revisar_resultado(self) -> None:
         try:
-            estado, archivo, dato = _cola_resultados.get_nowait()
+            resultado = _cola_resultados.get_nowait()
         except queue.Empty:
             self.after(500, self._revisar_resultado)
             return
+        self._extraccion_en_curso = False
+        self._archivo_en_curso = None
+        self._resultados_listos.append(resultado)
+        self._avanzar()
 
-        self.label_estado.config(text=f"Vigilando: {self.carpeta}\nEsperando facturas nuevas...")
-
+    def _mostrar_siguiente_resultado(self) -> None:
+        estado, archivo, dato = self._resultados_listos.pop(0)
         if estado == "error":
             messagebox.showerror(
                 "Error al leer la factura",
                 f"No pude leer {archivo.name}:\n{dato}\n\n"
                 "Quedará sin procesar; puedes intentar de nuevo con otra foto.",
             )
-            self._dialogo_abierto = False
+            self._avanzar()
             return
-
+        self._dialogo_abierto = True
         DialogoRevision(self, archivo, dato, self._al_cerrar_dialogo)
 
     def _al_cerrar_dialogo(self) -> None:
         self._dialogo_abierto = False
-        if self._cola_pendientes:
-            self.after(300, self._procesar_siguiente)
+        self.after(300, self._avanzar)
+
+    def _actualizar_estado(self) -> None:
+        lineas = [f"Vigilando: {self.carpeta}"]
+        if self._archivo_en_curso is not None:
+            lineas.append(f"Leyendo {self._archivo_en_curso.name}...")
+        en_espera = len(self._cola_pendientes) + len(self._resultados_listos)
+        if en_espera:
+            lineas.append(f"{en_espera} factura(s) más en cola")
+        if len(lineas) == 1:
+            lineas.append("Esperando facturas nuevas...")
+        self.label_estado.config(text="\n".join(lineas))
 
 
 class DialogoEmpresas(tk.Toplevel):
