@@ -174,16 +174,13 @@ class App(tk.Tk):
         DialogoGenerarTxt(self)
 
     def _primer_escaneo(self) -> None:
-        # Solo el PRIMER arranque de la vida de la app (aún no existe vistos.json)
-        # marca lo que ya está en la carpeta, para no procesar archivos viejos que
-        # no son facturas. En arranques siguientes no: una foto guardada mientras
-        # la app estaba cerrada debe procesarse al abrirla — la lista persistida
-        # de vistos ya evita repetir las que sí se procesaron.
-        if not _ruta_vistos.exists():
-            for archivo in self.carpeta.iterdir():
-                if archivo.suffix.lower() in EXTENSIONES_VALIDAS:
-                    _vistos.add(str(archivo.resolve()))
-            _guardar_vistos()
+        # Al arrancar, todo lo que ya está en la carpeta se marca como "visto":
+        # la app solo procesa facturas que LLEGUEN mientras está abierta (decisión
+        # deliberada — así nunca se traga archivos viejos que no son facturas).
+        for archivo in self.carpeta.iterdir():
+            if archivo.suffix.lower() in EXTENSIONES_VALIDAS:
+                _vistos.add(str(archivo.resolve()))
+        _guardar_vistos()
         self.after(1000, self._revisar_carpeta)
 
     def _revisar_carpeta(self) -> None:
